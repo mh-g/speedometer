@@ -1,5 +1,11 @@
 package plus.hahn.speedometer;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayDeque;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
@@ -25,7 +31,19 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
-import java.util.ArrayDeque;
+
+class parsedDouble {
+
+    public boolean valid;   // holds true if value can be used
+    public double value;    // double representation of input string
+    public String raw;      // copy of input string
+
+    parsedDouble() {
+        valid = false;
+        value = 0.0;
+        raw = "";
+    }
+}
 
 public class TerminalFragment extends Fragment implements ServiceConnection, SerialListener {
 
@@ -35,13 +53,20 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     private SerialService service;
 
     private TextView receiveText;
+    private TextView speedometerText;
+//    private OutputStreamWriter outputWriter;
 
     private Connected connected = Connected.False;
     private boolean initialStart = true;
+    private String speedometerLine = "";
+    private double currentSpeed = 0.0;    // m/s
+    private double accumulatedDistance = 0.0;   // m
+    private double timeWithMovement = 0.0;   // s
+    private java.time.Instant lastTimestamp = java.time.Instant.MIN;
+    private final Pattern sentencePattern = Pattern.compile (">[0-9a-fA-F]{6}:[VES][A-Z]#[0-9]{3}=.*<");
 
-    /*
-     * Lifecycle
-     */
+
+    // === Lifecycle ==========================================================
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -111,15 +136,17 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         service = null;
     }
 
-    /*
-     * UI
-     */
+    // === UI =================================================================
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_terminal, container, false);
         receiveText = view.findViewById(R.id.receive_text);                          // TextView performance decreases with number of spans
         receiveText.setTextColor(getResources().getColor(R.color.colorRecieveText)); // set as default color to reduce number of spans
         receiveText.setMovementMethod(ScrollingMovementMethod.getInstance());
+
+        speedometerText = view.findViewById(R.id.speedometer_text);                          // TextView performance decreases with number of spans
+        speedometerText.setTextColor(getResources().getColor(R.color.colorRecieveText)); // set as default color to reduce number of spans
+        speedometerText.setMovementMethod(ScrollingMovementMethod.getInstance());
 
         return view;
     }
@@ -134,15 +161,14 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         int id = item.getItemId();
         if (id == R.id.clear) {
             receiveText.setText("");
+            speedometerText.setText("");
             return true;
         } else {
             return super.onOptionsItemSelected(item);
         }
     }
 
-    /*
-     * Serial + UI
-     */
+    // === Serial + UI ========================================================
     private void connect() {
         try {
             BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
@@ -165,9 +191,77 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         SpannableStringBuilder spn = new SpannableStringBuilder();
         for (byte[] data : datas) {
             String msg = new String(data);
-            spn.append(msg);
+            receiveText.append(msg);
+            speedometerLine += new String(data);
+            Matcher sentenceMatcher = sentencePattern.matcher(speedometerLine);
+
+            if (sentenceMatcher.find()) {
+/*            if (outputWriter != null) {
+                try {
+                    outputWriter.write(speedometerLine);
+                } catch (IOException e) {
+                }
+            } */
+                String macAddress = speedometerLine.substring(1, 7);
+                char sensor = speedometerLine.charAt(8);
+                char dataset = speedometerLine.charAt(9);
+                int counter = Integer.parseInt(speedometerLine.substring(11, 14));
+                parsedDouble parsed = getDouble(speedometerLine.substring(15, speedometerLine.indexOf("<")));
+                speedometerLine = speedometerLine.substring(speedometerLine.indexOf("<") + 2);
+
+                switch (sensor) {
+                    case 'V':
+                        switch (dataset) {
+                            case 'F':   // frequency
+                                if (parsed.valid) {
+                                    handleFrequency(parsed.value);
+                                }
+                                break;
+                            case 'A':   // amplitude
+                                if (parsed.valid) {
+                                    handleAmplitude(parsed.value);
+                                }
+                                break;
+                            default:
+                                // some kind of error handling?!
+                                break;
+                        }
+                        break;
+                    case 'E':
+                        switch (dataset) {
+                            case 'P':   // pressure
+                            case 'T':   // temperature
+                            case 'H':   // humidity
+                            default:
+                                // some kind of error handling?!
+                                break;
+                        }
+                        break;
+                    case 'S':
+                        switch (dataset) {
+                            case 'V':   // supply voltage
+                            case 'U':   // uptime
+                                if (parsed.valid) {
+                                    handleUptime(parsed.value);
+                                }
+                                break;
+                            case 'B':   // build version
+                                if (!parsed.valid) {
+                                    handleBuildVersion(parsed.raw);
+                                }
+                                break;
+                            default:
+                                // some kind of error handling?!
+                                break;
+                        }
+                        break;
+                    default:
+                        // some kind of error handling?!
+                        break;
+                }
+            }
+
         }
-        receiveText.append(spn);
     }
 
     private void status(String str) {
@@ -176,9 +270,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         receiveText.append(spn);
     }
 
-    /*
-     * SerialListener
-     */
+    // === SerialListener =====================================================
     @Override
     public void onSerialConnect() {
         status("connected");
@@ -208,4 +300,41 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         disconnect();
     }
 
+    private parsedDouble getDouble (String value)
+    {
+        parsedDouble result = new parsedDouble();
+        result.raw = value;
+        try {
+            result.value = Double.parseDouble(value);
+            result.valid = true;
+        } catch(Exception e) {
+            result.valid = false;
+        }
+        return result;
+    }
+
+    private void handleFrequency(double frequency) {
+        Instant now = java.time.Instant.now();
+        if (lastTimestamp != java.time.Instant.MIN) {
+            Duration te = Duration.between(lastTimestamp, now);
+            double timeElapsed = 0.001 * te.toMillis();
+            currentSpeed = frequency * 0.16; // 1Hz = 16cm/s
+            accumulatedDistance += currentSpeed * timeElapsed;
+            timeWithMovement += timeElapsed;
+        }
+        lastTimestamp = now;
+        speedometerText.append("v=" + String.format("%05.2f", currentSpeed) + " d=" + String.format("%07.2f", accumulatedDistance) + " t=" + String.format("%07.2f", timeWithMovement) + "\n");
+    }
+
+    private void handleAmplitude(double amplitude) {
+        speedometerText.append("a=" + String.format("%05.2f", amplitude) + "\n");
+    }
+
+    private void handleUptime(double uptime) {
+        speedometerText.append("t=" + String.format("%05.2f", uptime) + "\n");
+    }
+
+    private void handleBuildVersion(String buildVersion) {
+        speedometerText.append("build: " + buildVersion + "\n");
+    }
 }
