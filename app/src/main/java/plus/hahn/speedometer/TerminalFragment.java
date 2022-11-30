@@ -147,11 +147,11 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_terminal, container, false);
         receiveText = view.findViewById(R.id.receive_text);                          // TextView performance decreases with number of spans
-        receiveText.setTextColor(getResources().getColor(R.color.colorRecieveText)); // set as default color to reduce number of spans
+        receiveText.setTextColor(getResources().getColor(R.color.colorReceiveText)); // set as default color to reduce number of spans
         receiveText.setMovementMethod(ScrollingMovementMethod.getInstance());
 
         speedometerText = view.findViewById(R.id.speedometer_text);                          // TextView performance decreases with number of spans
-        speedometerText.setTextColor(getResources().getColor(R.color.colorRecieveText)); // set as default color to reduce number of spans
+        speedometerText.setTextColor(getResources().getColor(R.color.colorReceiveText)); // set as default color to reduce number of spans
         speedometerText.setMovementMethod(ScrollingMovementMethod.getInstance());
 
         return view;
