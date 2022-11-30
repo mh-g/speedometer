@@ -1,25 +1,24 @@
 package plus.hahn.speedometer;
 
-import android.annotation.SuppressLint;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
-import android.view.View;
-import android.view.ViewGroup;
-import android.widget.ArrayAdapter;
-import android.widget.TextView;
+import android.os.Environment;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.fragment.app.Fragment;
-import androidx.fragment.app.FragmentManager;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.fragment.app.FragmentResultListener;
 
-import java.util.ArrayList;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+
 
 public class MainActivity extends AppCompatActivity {
 
@@ -28,6 +27,8 @@ public class MainActivity extends AppCompatActivity {
     private boolean failed;
     private String myDeviceAddress;
     private Bundle args = new Bundle();
+    private File logFile;
+    public FileOutputStream logFileStream = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -43,6 +44,7 @@ public class MainActivity extends AppCompatActivity {
                 if (result.compareTo("disconnected") == 0) {
                     // try to reconnect immediately
                     cleanupOldFragment();
+                    closeFile();
                     connect();
                 }
             }
@@ -52,6 +54,7 @@ public class MainActivity extends AppCompatActivity {
 
         if (myDeviceAddress != null) {
             cleanupOldFragment();
+            closeFile();
             connect();
         }
     }
@@ -81,6 +84,33 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void closeFile() {
+        if (logFileStream != null) {
+            try {
+                logFileStream.close();
+            } catch (IOException e) {
+                args.putString("error", "<Could not close file>");
+            }
+            logFileStream = null;
+        }
+    }
+
+    private static boolean isExternalStorageReadOnly() {
+        String extStorageState = Environment.getExternalStorageState();
+        if (Environment.MEDIA_MOUNTED_READ_ONLY.equals(extStorageState)) {
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean isExternalStorageAvailable() {
+        String extStorageState = Environment.getExternalStorageState();
+        if (Environment.MEDIA_MOUNTED.equals(extStorageState)) {
+            return true;
+        }
+        return false;
+    }
+
     public void cleanupOldFragment () {
         Fragment oldFragment = getSupportFragmentManager().findFragmentById(R.id.fragment);
         if (oldFragment != null) {
@@ -89,6 +119,19 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void connect () {
+        if (isExternalStorageAvailable() && !isExternalStorageReadOnly()) {
+            closeFile();
+            logFile = new File (getExternalFilesDir("speedometer"),
+                    "log-" + new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss").format(new java.util.Date()) + ".txt");
+            try {
+                logFileStream = new FileOutputStream(logFile);
+            } catch (IOException e) {
+                logFile = null;
+                logFileStream = null;
+                args.putString("error", "<Could not open file>");
+            }
+        }
+
         args.putString("device", myDeviceAddress);
         Fragment fragment = new TerminalFragment();
         fragment.setArguments(args);

@@ -1,10 +1,7 @@
 package plus.hahn.speedometer;
 
-import static android.content.Context.MODE_PRIVATE;
-
-import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.text.SimpleDateFormat;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
@@ -60,7 +57,6 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
 
     private TextView receiveText;
     private TextView speedometerText;
-    private OutputStreamWriter outputWriter;
 
     private Connected connected = Connected.False;
     private boolean initialStart = true;
@@ -190,14 +186,6 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         Bundle result = new Bundle();
         result.putString("bundleKey", "connected");
         getParentFragmentManager().setFragmentResult("requestKey", result);
-
-        try {
-            FileOutputStream fileOut = getActivity().openFileOutput("log-" + new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss")
-                    .format(new java.util.Date()) + ".txt", MODE_PRIVATE); // MODE_WORLD_READABLE);
-            outputWriter = new OutputStreamWriter(fileOut);
-        } catch (FileNotFoundException e) {
-            outputWriter = null;
-        }
     }
 
     private void disconnect() {
@@ -207,12 +195,6 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         Bundle result = new Bundle();
         result.putString("bundleKey", "disconnected");
         getParentFragmentManager().setFragmentResult("requestKey", result);
-        if (outputWriter != null) {
-            try {
-                outputWriter.close();
-            } catch (IOException e) {
-            }
-        }
     }
 
     private void receive(ArrayDeque<byte[]> datas) {
@@ -223,10 +205,14 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             Matcher sentenceMatcher = sentencePattern.matcher(speedometerLine);
 
             if (sentenceMatcher.find()) {
-                if (outputWriter != null) {
-                    try {
-                        outputWriter.write(speedometerLine);
-                    } catch (IOException e) {
+                if (getActivity() != null) {
+                    FileOutputStream logFileStream = ((MainActivity)getActivity()).logFileStream;
+                    if (logFileStream != null) {
+                        try {
+                            logFileStream.write(speedometerLine.getBytes(StandardCharsets.UTF_8));
+                        } catch (IOException e) {
+                            status ("could not write data to storage");
+                        }
                     }
                 }
                 String macAddress = speedometerLine.substring(1, 7);
