@@ -201,20 +201,20 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         for (byte[] data : datas) {
             String msg = new String(data);
             receiveText.append(msg);
+            if (getActivity() != null) {
+                FileOutputStream logFileStream = ((MainActivity)getActivity()).logFileStream;
+                if (logFileStream != null) {
+                    try {
+                        logFileStream.write(msg.getBytes(StandardCharsets.UTF_8));
+                    } catch (IOException e) {
+                        status ("could not write data to storage");
+                    }
+                }
+            }
             speedometerLine += new String(data);
             Matcher sentenceMatcher = sentencePattern.matcher(speedometerLine);
 
             if (sentenceMatcher.find()) {
-                if (getActivity() != null) {
-                    FileOutputStream logFileStream = ((MainActivity)getActivity()).logFileStream;
-                    if (logFileStream != null) {
-                        try {
-                            logFileStream.write(speedometerLine.getBytes(StandardCharsets.UTF_8));
-                        } catch (IOException e) {
-                            status ("could not write data to storage");
-                        }
-                    }
-                }
                 String macAddress = speedometerLine.substring(1, 7);
                 char sensor = speedometerLine.charAt(8);
                 char dataset = speedometerLine.charAt(9);
