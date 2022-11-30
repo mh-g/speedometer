@@ -1,5 +1,10 @@
 package plus.hahn.speedometer;
 
+import static android.content.Context.MODE_PRIVATE;
+
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
@@ -30,7 +35,8 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
-
+import java.io.FileOutputStream;
+import java.io.OutputStreamWriter;
 
 class parsedDouble {
 
@@ -54,7 +60,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
 
     private TextView receiveText;
     private TextView speedometerText;
-//    private OutputStreamWriter outputWriter;
+    private OutputStreamWriter outputWriter;
 
     private Connected connected = Connected.False;
     private boolean initialStart = true;
@@ -180,11 +186,33 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         } catch (Exception e) {
             onSerialConnectError(e);
         }
+
+        Bundle result = new Bundle();
+        result.putString("bundleKey", "connected");
+        getParentFragmentManager().setFragmentResult("requestKey", result);
+
+        try {
+            FileOutputStream fileOut = getActivity().openFileOutput("log-" + new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss")
+                    .format(new java.util.Date()) + ".txt", MODE_PRIVATE); // MODE_WORLD_READABLE);
+            outputWriter = new OutputStreamWriter(fileOut);
+        } catch (FileNotFoundException e) {
+            outputWriter = null;
+        }
     }
 
     private void disconnect() {
         connected = Connected.False;
         service.disconnect();
+
+        Bundle result = new Bundle();
+        result.putString("bundleKey", "disconnected");
+        getParentFragmentManager().setFragmentResult("requestKey", result);
+        if (outputWriter != null) {
+            try {
+                outputWriter.close();
+            } catch (IOException e) {
+            }
+        }
     }
 
     private void receive(ArrayDeque<byte[]> datas) {
@@ -281,6 +309,8 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     public void onSerialConnectError(Exception e) {
         status("connection failed: " + e.getMessage());
         disconnect();
+        onStop();
+        onDetach();
     }
 
     @Override
