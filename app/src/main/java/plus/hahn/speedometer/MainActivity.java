@@ -1,17 +1,27 @@
 package plus.hahn.speedometer;
 
+import android.annotation.SuppressLint;
 import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.ArrayAdapter;
+import android.widget.TextView;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
+import androidx.fragment.app.FragmentResultListener;
 
-public class MainActivity extends AppCompatActivity implements FragmentManager.OnBackStackChangedListener {
+import java.util.ArrayList;
+
+public class MainActivity extends AppCompatActivity {
 
     private BluetoothAdapter bluetoothAdapter;
     ActivityResultLauncher<String> requestBluetoothPermissionLauncherForRefresh;
@@ -25,11 +35,25 @@ public class MainActivity extends AppCompatActivity implements FragmentManager.O
         setContentView(R.layout.activity_main);
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
-        getSupportFragmentManager().addOnBackStackChangedListener(this);
-        if (savedInstanceState == null)
-            getSupportFragmentManager().beginTransaction().add(R.id.fragment, new DevicesFragment(), "devices").commit();
-        else
-            onBackStackChanged();
+
+        getSupportFragmentManager().setFragmentResultListener("requestKey", this, new FragmentResultListener() {
+            @Override
+            public void onFragmentResult(@NonNull String requestKey, @NonNull Bundle bundle) {
+                String result = bundle.getString("bundleKey");
+                if (result.compareTo("disconnected") == 0) {
+                    // try to reconnect immediately
+                    cleanupOldFragment();
+                    connect();
+                }
+            }
+        });
+
+        refresh();
+
+        if (myDeviceAddress != null) {
+            cleanupOldFragment();
+            connect();
+        }
     }
 
     void refresh() {
@@ -42,6 +66,18 @@ public class MainActivity extends AppCompatActivity implements FragmentManager.O
         } else if (!bluetoothAdapter.isEnabled()) {
             args.putString("error", "<Bluetooth is disabled>");
             failed = true;
+        }
+
+        for (BluetoothDevice device : bluetoothAdapter.getBondedDevices()) {
+            if (device.getType() != BluetoothDevice.DEVICE_TYPE_LE) {
+                if (device.getName().compareTo("ESP32speedometer") == 0) {
+                    if (myDeviceAddress != null) {
+                        args.putString("error", "<Multiple ESP32speedometers found>");
+                        failed = true;
+                    }
+                    myDeviceAddress = device.getAddress();
+                }
+            }
         }
     }
 
@@ -65,11 +101,6 @@ public class MainActivity extends AppCompatActivity implements FragmentManager.O
                     args.putString("error", "<Permission not granted>");
                 }
             });
-
-    @Override
-    public void onBackStackChanged() {
-        getSupportActionBar().setDisplayHomeAsUpEnabled(getSupportFragmentManager().getBackStackEntryCount()>0);
-    }
 
     @Override
     public boolean onSupportNavigateUp() {
