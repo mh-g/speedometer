@@ -216,7 +216,6 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     }
 
     private void receive(ArrayDeque<byte[]> datas) {
-        SpannableStringBuilder spn = new SpannableStringBuilder();
         for (byte[] data : datas) {
             String msg = new String(data);
             receiveText.append(msg);
@@ -224,12 +223,12 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             Matcher sentenceMatcher = sentencePattern.matcher(speedometerLine);
 
             if (sentenceMatcher.find()) {
-/*            if (outputWriter != null) {
-                try {
-                    outputWriter.write(speedometerLine);
-                } catch (IOException e) {
+                if (outputWriter != null) {
+                    try {
+                        outputWriter.write(speedometerLine);
+                    } catch (IOException e) {
+                    }
                 }
-            } */
                 String macAddress = speedometerLine.substring(1, 7);
                 char sensor = speedometerLine.charAt(8);
                 char dataset = speedometerLine.charAt(9);
